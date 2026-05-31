@@ -144,6 +144,15 @@ verify_checksum_manifest() {
   (cd "$manifest_dir" && sha256sum --check --strict "$manifest_file")
 }
 
+validate_rpm_package() {
+  local file=$1
+  local label=$2
+
+  require_file "$file"
+  rpm -qp --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' "$file" >/dev/null 2>&1 ||
+    fatal "${label} is not a readable RPM package: ${file}"
+}
+
 is_container_environment() {
   if command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt --quiet --container; then
     return 0
@@ -226,6 +235,11 @@ required_files=("$ILLUMIO_RPM_KEY" "$ILLUMIO_PCE_RPM" "$SERVER_CERT_PATH" "$SERV
 for file in "${required_files[@]}"; do
   require_file "$file"
 done
+
+validate_rpm_package "$ILLUMIO_PCE_RPM" "ILLUMIO_PCE_RPM"
+if [[ -f "$ILLUMIO_UI_RPM" ]]; then
+  validate_rpm_package "$ILLUMIO_UI_RPM" "ILLUMIO_UI_RPM"
+fi
 
 if [[ -n "$ADMIN_PASSWORD_FILE" ]]; then
   require_file "$ADMIN_PASSWORD_FILE"
