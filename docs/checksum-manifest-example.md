@@ -47,3 +47,17 @@ After generating a real manifest outside the repo, validate it with:
 ```bash
 scripts/validate_manifest.sh /usr/local/src/illumio-checksums.sha256
 ```
+
+## Private package endpoint
+
+If artifacts are published to `packages.hammerlabs.org`, use the staging helper instead of hand-downloading files. It downloads only HTTPS manifests marked `status: "ready"`, verifies every artifact SHA256 before use, validates RPM metadata for RPM roles, and writes the `CHECKSUM_MANIFEST` consumed by `install_illumio.sh`.
+
+```bash
+sudo PACKAGE_AUTH_USER=packages \
+  PACKAGE_AUTH_PASSWORD_FILE=/root/packages-basic-auth-password \
+  scripts/stage_package_release.py \
+    https://packages.hammerlabs.org/illumio/channels/stable.json \
+    --output-dir /usr/local/src/illumio-release
+```
+
+The generated `/usr/local/src/illumio-release/install.env` contains only local file paths and the checksum manifest path. Keep endpoint credentials outside this repository.

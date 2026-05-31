@@ -105,6 +105,33 @@ The manifest uses standard `sha256sum --check --strict` format. Paths may be abs
 
 For more detail, see `docs/checksum-manifest-example.md` and `docs/checksum-maintenance.md`.
 
+## Private package endpoint staging
+
+When artifacts are published through a private package endpoint, stage them locally before running the installer. The staging helper accepts HTTPS manifests with `product: "illumio-pce"` and `status: "ready"`, plus the approved LAN-only `http://packages.hammer.lan` origin for internal QA. It downloads artifacts only from the same origin as the manifest, verifies each SHA256, validates RPM metadata for RPM roles, and writes an installer env file plus `CHECKSUM_MANIFEST`. See `docs/package-manifest-schema.md` for the manifest shape.
+
+Example:
+
+```bash
+sudo PACKAGE_AUTH_USER=packages \
+  PACKAGE_AUTH_PASSWORD_FILE=/root/packages-basic-auth-password \
+  scripts/stage_package_release.py \
+    https://packages.hammerlabs.org/illumio/channels/stable.json \
+    --output-dir /usr/local/src/illumio-release
+
+sudo set -a
+sudo . /usr/local/src/illumio-release/install.env
+sudo set +a
+
+sudo PCE_FQDN=pce.example.internal \
+  LOAD_BALANCER_IP=192.0.2.10 \
+  EMAIL_ADDR=admin@example.internal \
+  ./install_illumio.sh --dry-run
+```
+
+Do not pass a channel whose manifest says `status: "empty"` or `status: "pending"`. Do not bypass the generated checksum manifest.
+
+The package endpoint stages Illumio packages and signing keys. Server certificates, private keys, and CA certificates still need to come from the approved client or QA secret path.
+
 ## Local checks
 
 Before changing the helper, run the basic checks:

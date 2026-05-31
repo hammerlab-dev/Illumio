@@ -57,6 +57,8 @@ sudo CHECKSUM_MANIFEST=/usr/local/src/illumio-checksums.sha256 \
   ./install_illumio.sh --dry-run
 ```
 
+If using the private package endpoint, stage artifacts first with `scripts/stage_package_release.py`. Do not consume an endpoint manifest until it is `status: "ready"` and all downloaded artifact hashes validate.
+
 Review every planned action before proceeding.
 
 If the dry run reports a container/LXC warning, move the install to a VM or bare-metal host before running `--yes`.

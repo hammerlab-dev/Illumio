@@ -8,7 +8,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "install_illumio.sh"
+STAGER = ROOT / "scripts" / "stage_package_release.py"
 text = SCRIPT.read_text(encoding="utf-8")
+stager_text = STAGER.read_text(encoding="utf-8")
 
 checks = {
     "script uses strict bash mode": "set -euo pipefail" in text,
@@ -27,6 +29,11 @@ checks = {
     "sysctl applies only Illumio settings": "sysctl -p /etc/sysctl.d/99-illumio.conf" in text and "sysctl --system" not in text,
     "rpm files are validated before mutation": "validate_rpm_package" in text and "rpm -qp --queryformat" in text,
     "manifest validation helper exists": (ROOT / "scripts" / "validate_manifest.sh").exists(),
+    "private package stager exists": STAGER.exists(),
+    "private package stager requires https manifests": "Manifest URL must use HTTPS" in stager_text,
+    "private package stager requires ready manifests": "status') != \"ready\"" in stager_text or 'status") != "ready"' in stager_text,
+    "private package stager verifies sha256": "SHA256 mismatch" in stager_text and "sha256_file" in stager_text,
+    "private package stager validates rpm metadata": '"rpm", "-qp"' in stager_text and "validate_rpm" in stager_text,
     "help documents dry-run and yes controls": "--dry-run" in text and "--yes" in text and "--help" in text,
     "mutation refusal without explicit confirmation remains": "Refusing to mutate this host without --yes" in text,
     "placeholder validation covers unsafe defaults": "validate_not_placeholder PCE_FQDN" in text and "validate_not_placeholder LOAD_BALANCER_IP" in text and "validate_not_placeholder EMAIL_ADDR" in text,
