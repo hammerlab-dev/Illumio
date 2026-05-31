@@ -4,6 +4,8 @@ All notable client-install and maintenance changes are tracked here.
 
 ## Unreleased
 
+- Add a real-install preflight guard for container/LXC hosts and document the VM/bare-metal requirement.
+- Apply only the Illumio sysctl file instead of replaying every host sysctl configuration file.
 - Add maintenance and release workflow documentation.
 - Add checksum manifest maintenance process and validation helper.
 

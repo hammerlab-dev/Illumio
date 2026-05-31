@@ -41,6 +41,7 @@ Common variables:
   ORG_NAME                 Optional; prompted if empty
   ADMIN_PASSWORD_FILE      Optional path to a root-readable file containing the initial password
   CHECKSUM_MANIFEST        Optional sha256sum-compatible manifest for staged package/signing files
+  ALLOW_CONTAINER_INSTALL  Set to 1 only with vendor approval to bypass the container/LXC guard
 EOF
 }
 
@@ -143,6 +144,40 @@ verify_checksum_manifest() {
   (cd "$manifest_dir" && sha256sum --check --strict "$manifest_file")
 }
 
+is_container_environment() {
+  if command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt --quiet --container; then
+    return 0
+  fi
+
+  if [[ -f /.dockerenv || -f /run/.containerenv ]]; then
+    return 0
+  fi
+
+  if grep -qaE 'container=|lxc|docker|kubepods|libpod' /proc/1/environ /proc/self/cgroup 2>/dev/null; then
+    return 0
+  fi
+
+  return 1
+}
+
+check_supported_host() {
+  if ! is_container_environment; then
+    return 0
+  fi
+
+  if ((DRY_RUN)); then
+    warn "Container/LXC environment detected. Dry-run will continue, but real install requires a VM or bare-metal host unless Illumio approves this platform."
+    return 0
+  fi
+
+  if [[ "${ALLOW_CONTAINER_INSTALL:-0}" == "1" ]]; then
+    warn "Container/LXC environment detected and ALLOW_CONTAINER_INSTALL=1 is set. Continuing despite likely kernel/module/sysctl failures."
+    return 0
+  fi
+
+  fatal "Container/LXC environment detected. Illumio PCE install needs host-level kernel, module, and sysctl controls; use a VM or bare-metal host, or set ALLOW_CONTAINER_INSTALL=1 only with vendor approval."
+}
+
 trap 'fatal "An unexpected error occurred near line ${LINENO}"' ERR
 
 # File paths. Defaults match historical staging names, but can be overridden.
@@ -207,6 +242,8 @@ else
   fatal "Refusing to mutate this host without --yes. Re-run with --dry-run first, then --yes when ready."
 fi
 
+check_supported_host
+
 SERVICE_DISCOVERY_KEY="$(openssl rand -base64 32)"
 
 log "Updating CA trust store..."
@@ -235,7 +272,7 @@ fs.file-max = 2000000
 net.core.somaxconn = 16384
 EOF
 
-run sysctl --system
+run sysctl -p /etc/sysctl.d/99-illumio.conf
 run modprobe nf_conntrack
 
 if ((DRY_RUN)); then

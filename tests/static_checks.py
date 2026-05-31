@@ -23,6 +23,8 @@ checks = {
     "expect reads password from file path instead of process environment": "<<'EOF'" in text and "$env(ADMIN_PASSWORD_PATH)" in text and "$env(ADMIN_PASSWORD)" not in text,
     "inherited password exports are cleared before reads": "unset ADMIN_PASSWORD ADMIN_PASSWORD2" in text,
     "optional checksum manifest is supported": "CHECKSUM_MANIFEST" in text and "sha256sum --check --strict" in text,
+    "container/LXC preflight guard exists": "check_supported_host" in text and "ALLOW_CONTAINER_INSTALL" in text and "Container/LXC environment detected" in text,
+    "sysctl applies only Illumio settings": "sysctl -p /etc/sysctl.d/99-illumio.conf" in text and "sysctl --system" not in text,
     "manifest validation helper exists": (ROOT / "scripts" / "validate_manifest.sh").exists(),
     "help documents dry-run and yes controls": "--dry-run" in text and "--yes" in text and "--help" in text,
     "mutation refusal without explicit confirmation remains": "Refusing to mutate this host without --yes" in text,
