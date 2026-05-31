@@ -62,8 +62,15 @@ Optional bootstrap and verification values:
 - `ORG_NAME`
 - `ADMIN_PASSWORD_FILE`, preferred for non-interactive installs. Do not commit this file.
 - `CHECKSUM_MANIFEST`, an optional `sha256sum`-compatible manifest for staged RPM, signing, and certificate files.
+- `ALLOW_CONTAINER_INSTALL`, an advanced override for container/LXC hosts. Leave it unset unless Illumio has explicitly approved the platform.
 
 Do not commit client RPMs, private keys, certificates, password files, logs, local environment files, or client-specific checksum manifests. Future-you will appreciate the restraint.
+
+## Host requirements
+
+Run the installer on an EL9/RHEL-like VM or bare-metal host with host-level kernel, module, sysctl, systemd, RPM, and dnf control.
+
+Linux containers and Proxmox LXCs are not a safe default target for this helper. The script allows `--dry-run` in a container so operators can validate inputs, but real installs fail early unless `ALLOW_CONTAINER_INSTALL=1` is set. Use that override only with vendor approval, because PCE setup changes kernel/module/sysctl state that containers commonly cannot own.
 
 ## Optional checksum verification
 

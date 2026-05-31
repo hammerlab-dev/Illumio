@@ -5,6 +5,7 @@ Use this checklist before running `install_illumio.sh` on a client Illumio PCE h
 ## 1. Confirm target host
 
 - Host is the intended single-node PCE target.
+- Host is a VM or bare-metal system, not a container/LXC, unless Illumio has explicitly approved that platform.
 - OS is an EL9/RHEL-like system with `dnf`, `rpm`, systemd, and required Illumio package compatibility.
 - You have an approved maintenance window.
 - You have rollback or rebuild access for the host.
@@ -40,6 +41,7 @@ Optional overrides:
 - artifact path variables listed in `README.md`
 - `CHECKSUM_MANIFEST`
 - `ADMIN_PASSWORD_FILE`
+- `ALLOW_CONTAINER_INSTALL` only when Illumio has approved a container/LXC target.
 
 ## 4. Verify checksums when possible
 
@@ -56,6 +58,8 @@ sudo CHECKSUM_MANIFEST=/usr/local/src/illumio-checksums.sha256 \
 ```
 
 Review every planned action before proceeding.
+
+If the dry run reports a container/LXC warning, move the install to a VM or bare-metal host before running `--yes`.
 
 ## 6. Confirm real install intentionally
 
