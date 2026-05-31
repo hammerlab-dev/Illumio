@@ -74,3 +74,29 @@ net.core.somaxconn = 16384
 ## Recommendation
 
 Do not deploy the Illumio PCE installer to Proxmox LXC by default. Use an EL9/RHEL-like VM with adequate rollback/rebuild access, stage the real Illumio artifacts outside the repo, run `--dry-run`, then run `--yes` only after the dry-run output is reviewed.
+
+## VM follow-up
+
+After the LXC test, the helper was tested in a disposable Rocky Linux 9.8 Proxmox VM:
+
+- Host: `fwd-proxmox`
+- Test VM: `150` / `illumio-vm-test`
+- IP: `10.117.0.150/24`
+
+The VM `--dry-run` passed without a container warning. A real `--yes` run with a valid Rocky RPM GPG key and a dummy PCE RPM got through prerequisite package install, targeted sysctl application, and `nf_conntrack` module handling, then failed at the dummy RPM artifact:
+
+```text
+fs.file-max = 2000000
+net.core.somaxconn = 16384
+[INFO] Importing Illumio GPG key...
+[INFO] Installing Illumio PCE RPM...
+error: open of dummy-rpm failed: No such file or directory
+```
+
+That showed the VM platform is viable past the LXC-only kernel/sysctl boundary, but also exposed a sequencing issue: invalid RPM artifacts were detected only after host mutation. The helper now validates staged RPM files with `rpm -qp` before making host changes.
+
+Re-running the updated helper with the same dummy RPM now stops before the install confirmation or any host-mutating phase:
+
+```text
+[ERROR] ILLUMIO_PCE_RPM is not a readable RPM package: /usr/local/src/illumio-pce-24.5.0-2379.el9.x86_64.rpm
+```
