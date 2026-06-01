@@ -62,8 +62,15 @@ Optional bootstrap and verification values:
 - `ORG_NAME`
 - `ADMIN_PASSWORD_FILE`, preferred for non-interactive installs. Do not commit this file.
 - `CHECKSUM_MANIFEST`, an optional `sha256sum`-compatible manifest for staged RPM, signing, and certificate files.
+- `ALLOW_CONTAINER_INSTALL`, an advanced override for container/LXC hosts. Leave it unset unless Illumio has explicitly approved the platform.
 
 Do not commit client RPMs, private keys, certificates, password files, logs, local environment files, or client-specific checksum manifests. Future-you will appreciate the restraint.
+
+## Host requirements
+
+Run the installer on an EL9/RHEL-like VM or bare-metal host with host-level kernel, module, sysctl, systemd, RPM, and dnf control.
+
+Linux containers and Proxmox LXCs are not a safe default target for this helper. The script allows `--dry-run` in a container so operators can validate inputs, but real installs fail early unless `ALLOW_CONTAINER_INSTALL=1` is set. Use that override only with vendor approval, because PCE setup changes kernel/module/sysctl state that containers commonly cannot own.
 
 ## Optional checksum verification
 
@@ -97,6 +104,33 @@ sudo CHECKSUM_MANIFEST=/usr/local/src/illumio-checksums.sha256 \
 The manifest uses standard `sha256sum --check --strict` format. Paths may be absolute, or relative to the manifest file's directory.
 
 For more detail, see `docs/checksum-manifest-example.md` and `docs/checksum-maintenance.md`.
+
+## Private package endpoint staging
+
+When artifacts are published through a private package endpoint, stage them locally before running the installer. The staging helper accepts HTTPS manifests with `product: "illumio-pce"` and `status: "ready"`, plus the approved LAN-only `http://packages.hammer.lan` origin for internal QA. It downloads artifacts only from the same origin as the manifest, verifies each SHA256, validates RPM metadata for RPM roles, and writes an installer env file plus `CHECKSUM_MANIFEST`. See `docs/package-manifest-schema.md` for the manifest shape.
+
+Example:
+
+```bash
+sudo PACKAGE_AUTH_USER=packages \
+  PACKAGE_AUTH_PASSWORD_FILE=/root/packages-basic-auth-password \
+  scripts/stage_package_release.py \
+    https://packages.hammerlabs.org/illumio/channels/stable.json \
+    --output-dir /usr/local/src/illumio-release
+
+sudo set -a
+sudo . /usr/local/src/illumio-release/install.env
+sudo set +a
+
+sudo PCE_FQDN=pce.example.internal \
+  LOAD_BALANCER_IP=192.0.2.10 \
+  EMAIL_ADDR=admin@example.internal \
+  ./install_illumio.sh --dry-run
+```
+
+Do not pass a channel whose manifest says `status: "empty"` or `status: "pending"`. Do not bypass the generated checksum manifest.
+
+The package endpoint stages Illumio packages and signing keys. Server certificates, private keys, and CA certificates still need to come from the approved client or QA secret path.
 
 ## Local checks
 

@@ -41,6 +41,7 @@ Common variables:
   ORG_NAME                 Optional; prompted if empty
   ADMIN_PASSWORD_FILE      Optional path to a root-readable file containing the initial password
   CHECKSUM_MANIFEST        Optional sha256sum-compatible manifest for staged package/signing files
+  ALLOW_CONTAINER_INSTALL  Set to 1 only with vendor approval to bypass the container/LXC guard
 EOF
 }
 
@@ -143,6 +144,49 @@ verify_checksum_manifest() {
   (cd "$manifest_dir" && sha256sum --check --strict "$manifest_file")
 }
 
+validate_rpm_package() {
+  local file=$1
+  local label=$2
+
+  require_file "$file"
+  rpm -qp --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' "$file" >/dev/null 2>&1 ||
+    fatal "${label} is not a readable RPM package: ${file}"
+}
+
+is_container_environment() {
+  if command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt --quiet --container; then
+    return 0
+  fi
+
+  if [[ -f /.dockerenv || -f /run/.containerenv ]]; then
+    return 0
+  fi
+
+  if grep -qaE 'container=|lxc|docker|kubepods|libpod' /proc/1/environ /proc/self/cgroup 2>/dev/null; then
+    return 0
+  fi
+
+  return 1
+}
+
+check_supported_host() {
+  if ! is_container_environment; then
+    return 0
+  fi
+
+  if ((DRY_RUN)); then
+    warn "Container/LXC environment detected. Dry-run will continue, but real install requires a VM or bare-metal host unless Illumio approves this platform."
+    return 0
+  fi
+
+  if [[ "${ALLOW_CONTAINER_INSTALL:-0}" == "1" ]]; then
+    warn "Container/LXC environment detected and ALLOW_CONTAINER_INSTALL=1 is set. Continuing despite likely kernel/module/sysctl failures."
+    return 0
+  fi
+
+  fatal "Container/LXC environment detected. Illumio PCE install needs host-level kernel, module, and sysctl controls; use a VM or bare-metal host, or set ALLOW_CONTAINER_INSTALL=1 only with vendor approval."
+}
+
 trap 'fatal "An unexpected error occurred near line ${LINENO}"' ERR
 
 # File paths. Defaults match historical staging names, but can be overridden.
@@ -192,6 +236,11 @@ for file in "${required_files[@]}"; do
   require_file "$file"
 done
 
+validate_rpm_package "$ILLUMIO_PCE_RPM" "ILLUMIO_PCE_RPM"
+if [[ -f "$ILLUMIO_UI_RPM" ]]; then
+  validate_rpm_package "$ILLUMIO_UI_RPM" "ILLUMIO_UI_RPM"
+fi
+
 if [[ -n "$ADMIN_PASSWORD_FILE" ]]; then
   require_file "$ADMIN_PASSWORD_FILE"
   [[ -r "$ADMIN_PASSWORD_FILE" ]] || fatal "ADMIN_PASSWORD_FILE is not readable by root: ${ADMIN_PASSWORD_FILE}"
@@ -206,6 +255,8 @@ elif ((ASSUME_YES)); then
 else
   fatal "Refusing to mutate this host without --yes. Re-run with --dry-run first, then --yes when ready."
 fi
+
+check_supported_host
 
 SERVICE_DISCOVERY_KEY="$(openssl rand -base64 32)"
 
@@ -235,7 +286,7 @@ fs.file-max = 2000000
 net.core.somaxconn = 16384
 EOF
 
-run sysctl --system
+run sysctl -p /etc/sysctl.d/99-illumio.conf
 run modprobe nf_conntrack
 
 if ((DRY_RUN)); then
@@ -378,10 +429,12 @@ close $password_file
 set admin_password [string trimright $admin_password "\r\n"]
 spawn sudo -u ilo-pce illumio-pce-db-management create-domain --user-name $env(ADMIN_EMAIL) --full-name $env(FULL_NAME) --org-name $env(ORG_NAME)
 expect "Enter Password:"
+log_user 0
 send -- "$admin_password\r"
 expect "Re-enter Password:"
 send -- "$admin_password\r"
 expect eof
+log_user 1
 EOF
 unset ADMIN_PASSWORD_PATH
 cleanup_admin_password_tmp
