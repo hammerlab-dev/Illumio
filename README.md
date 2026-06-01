@@ -1,12 +1,21 @@
 # Illumio PCE install helper
 
-This repository contains a one-time helper for client-side Illumio PCE single-node installs. It is not a daemon or standing service.
+This repo is a small, intentionally boring helper for one-time Illumio PCE single-node installs. It is meant for client-side install work where the real Illumio artifacts are already staged on the target host.
 
-## Safety model
+It is not a daemon, not a standing service, and not something to run just to see what happens. It changes a host for real.
 
-The installer mutates the host: it installs RPMs, changes sysctl/module settings, writes Illumio configuration, starts PCE services, initializes the database, and creates the first admin domain. For that reason it refuses real execution unless `--yes` is supplied.
+## Read this before running it
 
-Run a validation pass first:
+`install_illumio.sh` mutates the target host. It installs RPMs, changes sysctl and module settings, writes Illumio config, starts PCE services, initializes the database, and creates the first admin domain. That is a lot of confidence to place in one shell script, so the script tries to make accidental installs difficult.
+
+The short version:
+
+1. Stage the real client artifacts on the target host.
+2. Set the required environment variables.
+3. Run `--dry-run` first and read what it plans to do.
+4. Run the real install only when you mean it, with `--yes`.
+
+Dry run first:
 
 ```bash
 sudo PCE_FQDN=pce.example.internal \
@@ -15,7 +24,7 @@ sudo PCE_FQDN=pce.example.internal \
   ./install_illumio.sh --dry-run
 ```
 
-Then run intentionally on the target host:
+Then, only on the intended target host:
 
 ```bash
 sudo PCE_FQDN=pce.example.internal \
@@ -24,35 +33,41 @@ sudo PCE_FQDN=pce.example.internal \
   ./install_illumio.sh --yes
 ```
 
-## Required inputs
+Without `--yes`, real execution refuses to proceed. That is on purpose.
 
-Stage the Illumio RPMs, signing key, server certificate/key, and CA certificate on the target host. Defaults match the historical `/usr/local/src` staging layout, but every path can be overridden:
+## What you need to stage
+
+Put the Illumio packages and certificates on the target host before running the helper. The defaults match the historical `/usr/local/src` staging layout, but every path can be overridden.
+
+Required or commonly staged files:
 
 - `ILLUMIO_RPM_KEY`
 - `ILLUMIO_PCE_RPM`
-- `ILLUMIO_UI_RPM` (optional; skipped if absent)
+- `ILLUMIO_UI_RPM` (optional, skipped if absent)
 - `SERVER_CERT_PATH`
 - `SERVER_KEY_PATH`
 - `CA_CERT`
 - `RUN_ENV_FILE`
 
-Site-specific values have no safe defaults and must be set:
+Site-specific values have no safe defaults. Set them every time:
 
 - `PCE_FQDN`
 - `LOAD_BALANCER_IP`
 - `EMAIL_ADDR`
 
-Optional admin bootstrap values:
+Optional bootstrap and verification values:
 
 - `ADMIN_EMAIL`
 - `FULL_NAME`
 - `ORG_NAME`
-- `ADMIN_PASSWORD_FILE` — preferred for non-interactive installs; do not commit this file.
-- `CHECKSUM_MANIFEST` — optional `sha256sum`-compatible manifest for staged RPM/signing/certificate files.
+- `ADMIN_PASSWORD_FILE`, preferred for non-interactive installs. Do not commit this file.
+- `CHECKSUM_MANIFEST`, an optional `sha256sum`-compatible manifest for staged RPM, signing, and certificate files.
+
+Do not commit client RPMs, private keys, certificates, password files, logs, local environment files, or client-specific checksum manifests. Future-you will appreciate the restraint.
 
 ## Optional checksum verification
 
-For client installs, create the checksum manifest from a trusted source after receiving or staging the real artifacts. Do not invent hashes and do not commit client-specific manifests.
+When possible, create a checksum manifest from a trusted source after receiving or staging the real artifacts. Do not invent hashes, and do not commit client-specific manifests.
 
 Example on the staging host:
 
@@ -69,7 +84,7 @@ sha256sum \
 chmod 600 illumio-checksums.sha256
 ```
 
-Then pass it to the installer:
+Pass the manifest to the installer:
 
 ```bash
 sudo CHECKSUM_MANIFEST=/usr/local/src/illumio-checksums.sha256 \
@@ -81,7 +96,11 @@ sudo CHECKSUM_MANIFEST=/usr/local/src/illumio-checksums.sha256 \
 
 The manifest uses standard `sha256sum --check --strict` format. Paths may be absolute, or relative to the manifest file's directory.
 
+For more detail, see `docs/checksum-manifest-example.md` and `docs/checksum-maintenance.md`.
+
 ## Local checks
+
+Before changing the helper, run the basic checks:
 
 ```bash
 bash -n install_illumio.sh
@@ -94,16 +113,16 @@ If `shellcheck` is available, run it too:
 shellcheck install_illumio.sh
 ```
 
-## Client install readiness
-
-Before a real client install, follow `docs/client-install-checklist.md`. For checksum manifests, see `docs/checksum-manifest-example.md`.
-
-Repository maintainers should run:
+Maintainers should run the full repo check before pushing:
 
 ```bash
 scripts/check_repo.sh
 ```
 
+## Before a client install
+
+Use `docs/client-install-checklist.md` before touching a real client host. It covers the boring but important bits: target confirmation, artifact staging, dry-run review, intentional install, and post-install checks.
+
 ## Maintenance and releases
 
-See `docs/maintenance.md` for the safe-change workflow, release tags, and rollback/recovery guidance. See `docs/checksum-maintenance.md` for maintaining checksum manifests over time.
+See `docs/maintenance.md` for the safe-change workflow, release tags, and rollback/recovery guidance. In practice: keep changes small, keep dry-run useful, preserve the `--yes` safety gate, and run `scripts/check_repo.sh`.
