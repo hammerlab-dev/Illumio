@@ -33,6 +33,8 @@ Required environment values:
 - `LOAD_BALANCER_IP`
 - `EMAIL_ADDR`
 
+Before install, confirm `PCE_FQDN` resolves for client browsers and points at the intended load balancer or node IP. The UI can answer on an IP address while still redirecting users to an unresolved FQDN.
+
 Optional overrides:
 
 - `SERVICE_DISCOVERY_FQDN`
@@ -81,6 +83,9 @@ Without `--yes`, the script must refuse host mutation.
 
 - Confirm `illumio-pce-ctl cluster-status` is healthy.
 - Confirm the service reaches the expected runlevel.
+- Confirm `https://$PCE_FQDN:8443/login` loads in a browser or browser automation.
 - Confirm the admin account can sign in.
 - Store local admin password files securely or destroy them according to the client procedure.
 - Record the exact artifact versions and checksum manifest used.
+
+Do not rely on `systemctl status illumio-pce` as the primary health check. Some package builds run PCE services under Illumio's own control tooling without a conventional `illumio-pce.service` unit.

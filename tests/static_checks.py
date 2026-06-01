@@ -27,6 +27,8 @@ checks = {
     "inherited password exports are cleared before reads": "unset ADMIN_PASSWORD ADMIN_PASSWORD2" in text,
     "optional checksum manifest is supported": "CHECKSUM_MANIFEST" in text and "sha256sum --check --strict" in text,
     "container/LXC preflight guard exists": "check_supported_host" in text and "ALLOW_CONTAINER_INSTALL" in text and "Container/LXC environment detected" in text,
+    "fqdn dns validation warns about browser redirects": "check_fqdn_resolution" in text and "Browser access may fail after redirect" in text,
+    "post-install login url smoke check exists": "check_login_url" in text and "https://${PCE_FQDN}:8443/login" in text,
     "sysctl applies only Illumio settings": "sysctl -p /etc/sysctl.d/99-illumio.conf" in text and "sysctl --system" not in text,
     "rpm files are validated before mutation": "validate_rpm_package" in text and "rpm -qp --queryformat" in text,
     "manifest validation helper exists": (ROOT / "scripts" / "validate_manifest.sh").exists(),

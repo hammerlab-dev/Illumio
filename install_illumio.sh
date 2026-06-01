@@ -130,6 +130,44 @@ validate_not_placeholder() {
   esac
 }
 
+check_fqdn_resolution() {
+  local fqdn=$1
+  local expected_ip=$2
+  local resolved_ips
+
+  if ! command -v getent >/dev/null 2>&1; then
+    warn "Cannot validate DNS for ${fqdn}; getent is not available."
+    return 0
+  fi
+
+  resolved_ips="$(getent ahostsv4 "$fqdn" 2>/dev/null | awk '{print $1}' | sort -u || true)"
+  if [[ -z "$resolved_ips" ]]; then
+    warn "${fqdn} does not resolve from this host. The PCE may redirect browsers to https://${fqdn}:8443, so create DNS before user validation."
+    return 0
+  fi
+
+  if grep -Fxq "$expected_ip" <<<"$resolved_ips"; then
+    log "${fqdn} resolves to ${expected_ip}."
+  else
+    warn "${fqdn} resolves to ${resolved_ips//$'\n'/, }, but LOAD_BALANCER_IP is ${expected_ip}. Browser access may fail after redirect."
+  fi
+}
+
+check_login_url() {
+  local url="https://${PCE_FQDN}:8443/login"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "curl is not available; skipping login URL smoke check for ${url}."
+    return 0
+  fi
+
+  if curl -kfsSI --connect-timeout 10 "$url" >/dev/null; then
+    log "Login URL responded: ${url}"
+  else
+    warn "Login URL did not respond cleanly: ${url}. Check DNS, firewall policy, certificate state, and PCE web services."
+  fi
+}
+
 verify_checksum_manifest() {
   local manifest=$1
   local manifest_dir manifest_file
@@ -230,6 +268,7 @@ validate_not_placeholder PCE_FQDN "$PCE_FQDN"
 validate_not_placeholder SERVICE_DISCOVERY_FQDN "$SERVICE_DISCOVERY_FQDN"
 validate_not_placeholder LOAD_BALANCER_IP "$LOAD_BALANCER_IP"
 validate_not_placeholder EMAIL_ADDR "$EMAIL_ADDR"
+check_fqdn_resolution "$PCE_FQDN" "$LOAD_BALANCER_IP"
 
 required_files=("$ILLUMIO_RPM_KEY" "$ILLUMIO_PCE_RPM" "$SERVER_CERT_PATH" "$SERVER_KEY_PATH" "$CA_CERT")
 for file in "${required_files[@]}"; do
@@ -439,5 +478,8 @@ EOF
 unset ADMIN_PASSWORD_PATH
 cleanup_admin_password_tmp
 trap - EXIT
+
+log "Checking browser login URL..."
+check_login_url
 
 log "Installation complete. You should now be able to access the PCE via https://${PCE_FQDN}:8443"
