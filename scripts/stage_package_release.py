@@ -10,9 +10,10 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 
@@ -26,6 +27,7 @@ ENV_BY_ROLE = {
     "ca_cert": "CA_CERT",
 }
 RPM_ROLES = {"pce_rpm", "ui_rpm"}
+LOCAL_HTTP_HOSTS = {"packages.hammer.lan"}
 
 
 def fatal(message: str) -> None:
@@ -53,12 +55,36 @@ def fetch_bytes(url: str, auth_header: str | None) -> bytes:
         return response.read()
 
 
+def parse_manifest_url(url: str):
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return parsed
+    if parsed.scheme == "http" and parsed.hostname in LOCAL_HTTP_HOSTS:
+        return parsed
+    fatal("Manifest URL must use HTTPS, except approved local LAN package hosts")
+
+
+def require_same_origin(manifest_url: str, artifact_url_value: str) -> str:
+    manifest = urlparse(manifest_url)
+    artifact = urlparse(artifact_url_value)
+    if artifact.scheme not in {"http", "https"} or not artifact.netloc:
+        fatal(f"Artifact URL must be absolute HTTP(S): {artifact_url_value}")
+    if (artifact.scheme, artifact.netloc) != (manifest.scheme, manifest.netloc):
+        fatal(f"Artifact URL must stay on manifest origin: {artifact_url_value}")
+    return artifact_url_value
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def require_command(command: str) -> None:
+    if shutil.which(command) is None:
+        fatal(f"Required command not found: {command}")
 
 
 def validate_rpm(path: Path) -> None:
@@ -73,15 +99,95 @@ def validate_rpm(path: Path) -> None:
 
 
 def artifact_url(manifest_url: str, release_base_url: str | None, artifact: dict[str, object]) -> str:
-    if "url" in artifact:
-        return str(artifact["url"])
     path = str(artifact.get("path", ""))
-    if not path or path.startswith("/") or ".." in Path(path).parts:
-        fatal(f"Invalid artifact path in manifest: {path!r}")
-    base = release_base_url or manifest_url
-    if not base.endswith("/"):
-        base += "/"
-    return urljoin(base, path)
+    if path:
+        if ".." in Path(path).parts:
+            fatal(f"Invalid artifact path in manifest: {path!r}")
+        if path.startswith("/"):
+            manifest = urlparse(manifest_url)
+            return urlunparse((manifest.scheme, manifest.netloc, path, "", "", ""))
+        base = release_base_url or manifest_url
+        if not base.endswith("/"):
+            base += "/"
+        return require_same_origin(manifest_url, urljoin(base, path))
+
+    if "url" in artifact:
+        return require_same_origin(manifest_url, str(artifact["url"]))
+
+    fatal("Artifact must include path or url")
+
+
+def artifact_name(artifact: dict[str, object]) -> str:
+    return str(artifact.get("filename") or artifact.get("name") or Path(str(artifact.get("path", ""))).name)
+
+
+def is_pce_rpm(artifact: dict[str, object]) -> bool:
+    name = artifact_name(artifact)
+    return (
+        artifact.get("kind") == "rpm"
+        and name.startswith("illumio-pce-")
+        and not name.startswith("illumio-pce-ui-")
+    )
+
+
+def is_ui_rpm(artifact: dict[str, object]) -> bool:
+    return artifact.get("kind") == "rpm" and artifact_name(artifact).startswith("illumio-pce-ui-")
+
+
+def select_one(candidates: list[dict[str, object]], role: str) -> dict[str, object]:
+    if not candidates:
+        fatal(f"Manifest is missing required artifact role: {role}")
+    if len(candidates) > 1:
+        names = ", ".join(artifact_name(candidate) for candidate in candidates)
+        fatal(f"Manifest has multiple candidates for {role}; add explicit roles: {names}")
+    return candidates[0]
+
+
+def infer_artifact_roles(manifest: dict[str, object]) -> list[dict[str, object]]:
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        fatal("Manifest must contain a non-empty artifacts list")
+
+    if any(isinstance(artifact, dict) and artifact.get("role") for artifact in artifacts):
+        return artifacts
+
+    version = str(manifest.get("version", ""))
+    pce_candidates = [artifact for artifact in artifacts if isinstance(artifact, dict) and is_pce_rpm(artifact) and ".el9." in artifact_name(artifact)]
+    ui_candidates = [
+        artifact
+        for artifact in artifacts
+        if isinstance(artifact, dict)
+        and is_ui_rpm(artifact)
+        and (not version or artifact_name(artifact).startswith(f"illumio-pce-ui-{version}."))
+    ]
+    key_candidates = [
+        artifact
+        for artifact in artifacts
+        if isinstance(artifact, dict)
+        and artifact.get("kind") == "signing-key"
+        and artifact_name(artifact).startswith("illumio-pce-ui-")
+        and (not version or artifact_name(artifact).startswith(f"illumio-pce-ui-{version}."))
+    ]
+
+    selected = [
+        dict(select_one(key_candidates, "rpm_key"), role="rpm_key"),
+        dict(select_one(pce_candidates, "pce_rpm"), role="pce_rpm"),
+    ]
+    if ui_candidates:
+        selected.append(dict(select_one(ui_candidates, "ui_rpm"), role="ui_rpm", required=False))
+    return selected
+
+
+def validate_release_base(manifest_url: str, release_base_url: object) -> str | None:
+    if not release_base_url:
+        return None
+    base_url = str(release_base_url)
+    parsed = urlparse(base_url)
+    if parsed.scheme or parsed.netloc:
+        return require_same_origin(manifest_url, base_url)
+    if ".." in Path(base_url).parts:
+        fatal(f"Invalid base_url in manifest: {base_url!r}")
+    return urljoin(manifest_url, base_url)
 
 
 def main() -> int:
@@ -92,8 +198,9 @@ def main() -> int:
     parser.add_argument("--auth-password-file", default=os.environ.get("PACKAGE_AUTH_PASSWORD_FILE"))
     args = parser.parse_args()
 
-    if not args.manifest_url.startswith("https://"):
-        fatal("Manifest URL must use HTTPS")
+    manifest_origin = parse_manifest_url(args.manifest_url)
+    if manifest_origin.scheme == "http" and (args.auth_user or args.auth_password_file):
+        fatal("Package credentials are not allowed with HTTP manifests")
 
     auth_header = read_basic_auth_header(args.auth_user, args.auth_password_file)
     output_dir = Path(args.output_dir)
@@ -106,14 +213,14 @@ def main() -> int:
     if manifest.get("status") != "ready":
         fatal(f"Manifest is not ready: status={manifest.get('status')!r}")
 
-    artifacts = manifest.get("artifacts")
-    if not isinstance(artifacts, list) or not artifacts:
-        fatal("Manifest must contain a non-empty artifacts list")
-
-    release_base_url = manifest.get("base_url")
+    artifacts = infer_artifact_roles(manifest)
+    release_base_url = validate_release_base(args.manifest_url, manifest.get("base_url"))
     checksum_lines: list[str] = []
     env_lines: list[str] = []
     seen_roles: set[str] = set()
+
+    if any(isinstance(artifact, dict) and artifact.get("role") in RPM_ROLES for artifact in artifacts):
+        require_command("rpm")
 
     for artifact in artifacts:
         if not isinstance(artifact, dict):
