@@ -23,6 +23,7 @@ checks = {
     "password file supported instead of hardcoded password": "ADMIN_PASSWORD_FILE" in text,
     "placeholder guard exists": "validate_not_placeholder" in text,
     "expect reads password from file path instead of process environment": "<<'EOF'" in text and "$env(ADMIN_PASSWORD_PATH)" in text and "$env(ADMIN_PASSWORD)" not in text,
+    "expect suppresses admin password echo": "log_user 0" in text and "send -- \"$admin_password\\r\"" in text and "log_user 1" in text,
     "inherited password exports are cleared before reads": "unset ADMIN_PASSWORD ADMIN_PASSWORD2" in text,
     "optional checksum manifest is supported": "CHECKSUM_MANIFEST" in text and "sha256sum --check --strict" in text,
     "container/LXC preflight guard exists": "check_supported_host" in text and "ALLOW_CONTAINER_INSTALL" in text and "Container/LXC environment detected" in text,

@@ -429,10 +429,12 @@ close $password_file
 set admin_password [string trimright $admin_password "\r\n"]
 spawn sudo -u ilo-pce illumio-pce-db-management create-domain --user-name $env(ADMIN_EMAIL) --full-name $env(FULL_NAME) --org-name $env(ORG_NAME)
 expect "Enter Password:"
+log_user 0
 send -- "$admin_password\r"
 expect "Re-enter Password:"
 send -- "$admin_password\r"
 expect eof
+log_user 1
 EOF
 unset ADMIN_PASSWORD_PATH
 cleanup_admin_password_tmp
