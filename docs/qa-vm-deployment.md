@@ -19,6 +19,7 @@ This note captures the disposable VM path used to validate the installer against
 - Network: VLAN 117, `10.117.0.154/24`
 - Firewall: Proxmox firewall enabled, inbound default DROP
 - Allowed inbound: SSH `22`, PCE UI `8443`, and ICMP from management clients
+- DNS: `illumio-qa.hammer.lan -> 10.117.0.154`
 - Public/Caddy exposure: none
 
 Snapshots:
@@ -82,13 +83,30 @@ Post-install checks:
 
 ```bash
 sudo -u ilo-pce illumio-pce-ctl cluster-status
-curl -kI https://10.117.0.154:8443
+sudo -u ilo-pce illumio-pce-ctl get-runlevel
+getent hosts illumio-qa.hammer.lan
+curl -kI https://illumio-qa.hammer.lan:8443/login
 ```
 
 Expected results:
 
 - `Cluster status: RUNNING`
+- runlevel `5`
+- `illumio-qa.hammer.lan` resolves to `10.117.0.154`
 - `HTTP/1.1 200 OK`
+
+Browser validation:
+
+```bash
+npx --yes playwright screenshot \
+  --browser=chromium \
+  --ignore-https-errors \
+  https://illumio-qa.hammer.lan:8443/login \
+  /tmp/illumio-qa-login.png
+```
+
+The browser should show the Illumio login page. Testing only `https://10.117.0.154:8443`
+is not enough because the application may redirect users to the configured PCE FQDN.
 
 ## Cleanup
 
@@ -118,3 +136,5 @@ qm rollback 154 pre-illumio-install
 - The package origin manifest publishes `kind`, `name`, `path`, and `sha256`; the stager must infer installer roles for this live format.
 - Artifact downloads must stay on the manifest origin so endpoint credentials are not sent to an unexpected host.
 - Initial admin password handling must suppress terminal echo and avoid durable logs.
+- DNS for `PCE_FQDN` must exist before browser validation. The UI can respond by IP while the real user flow still fails after redirect.
+- `systemctl status illumio-pce` is not a reliable success signal for this package build. Use `illumio-pce-ctl get-runlevel` and `illumio-pce-ctl cluster-status`.
