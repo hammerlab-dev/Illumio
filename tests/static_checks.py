@@ -33,7 +33,7 @@ checks = {
     "rpm files are validated before mutation": "validate_rpm_package" in text and "rpm -qp --queryformat" in text,
     "manifest validation helper exists": (ROOT / "scripts" / "validate_manifest.sh").exists(),
     "private package stager exists": STAGER.exists(),
-    "private package stager requires secure or approved local manifests": "Manifest URL must use HTTPS, except approved local LAN package hosts" in stager_text and "packages.hammer.lan" in stager_text,
+    "private package stager requires secure or explicitly allowlisted local manifests": "PACKAGE_ALLOW_HTTP_HOSTS" in stager_text and "explicitly allow the local HTTP host" in stager_text,
     "private package stager pins artifacts to manifest origin": "Artifact URL must stay on manifest origin" in stager_text and "urlunparse" in stager_text,
     "private package stager rejects credentials over http": "Package credentials are not allowed with HTTP manifests" in stager_text,
     "private package stager infers live package manifest roles": "infer_artifact_roles" in stager_text and "illumio-pce-ui-" in stager_text,

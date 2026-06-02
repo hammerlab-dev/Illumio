@@ -50,13 +50,13 @@ scripts/validate_manifest.sh /usr/local/src/illumio-checksums.sha256
 
 ## Private package endpoint
 
-If artifacts are published to the private package origin, use the staging helper instead of hand-downloading files. It consumes HTTPS manifests, plus the approved LAN-only `http://packages.hammer.lan` origin for internal QA, marked `status: "ready"`. It downloads artifacts only from the same origin as the manifest, verifies every artifact SHA256 before use, validates RPM metadata for RPM roles, and writes the `CHECKSUM_MANIFEST` consumed by `install_illumio.sh`.
+If artifacts are published to the private package origin, use the staging helper instead of hand-downloading files. It consumes HTTPS manifests marked `status: "ready"`. For isolated internal QA, explicitly allow a local HTTP manifest host with `PACKAGE_ALLOW_HTTP_HOSTS=packages.example.internal`; do not send credentials over HTTP. The helper downloads artifacts only from the same origin as the manifest, verifies every artifact SHA256 before use, validates RPM metadata for RPM roles, and writes the `CHECKSUM_MANIFEST` consumed by `install_illumio.sh`.
 
 ```bash
 sudo PACKAGE_AUTH_USER=packages \
   PACKAGE_AUTH_PASSWORD_FILE=/root/packages-basic-auth-password \
   scripts/stage_package_release.py \
-    https://packages.hammerlabs.org/illumio/channels/stable.json \
+    https://packages.example.com/illumio/channels/stable.json \
     --output-dir /usr/local/src/illumio-release
 ```
 

@@ -107,7 +107,7 @@ For more detail, see `docs/checksum-manifest-example.md` and `docs/checksum-main
 
 ## Private package endpoint staging
 
-When artifacts are published through a private package endpoint, stage them locally before running the installer. The staging helper accepts HTTPS manifests with `product: "illumio-pce"` and `status: "ready"`, plus the approved LAN-only `http://packages.hammer.lan` origin for internal QA. It downloads artifacts only from the same origin as the manifest, verifies each SHA256, validates RPM metadata for RPM roles, and writes an installer env file plus `CHECKSUM_MANIFEST`. See `docs/package-manifest-schema.md` for the manifest shape.
+When artifacts are published through a private package endpoint, stage them locally before running the installer. The staging helper accepts HTTPS manifests with `product: "illumio-pce"` and `status: "ready"`. For isolated internal QA, an operator can explicitly allow a local HTTP manifest host with `PACKAGE_ALLOW_HTTP_HOSTS`; credentials are still refused over HTTP. The helper downloads artifacts only from the same origin as the manifest, verifies each SHA256, validates RPM metadata for RPM roles, and writes an installer env file plus `CHECKSUM_MANIFEST`. See `docs/package-manifest-schema.md` for the manifest shape.
 
 Example:
 
@@ -115,7 +115,7 @@ Example:
 sudo PACKAGE_AUTH_USER=packages \
   PACKAGE_AUTH_PASSWORD_FILE=/root/packages-basic-auth-password \
   scripts/stage_package_release.py \
-    https://packages.hammerlabs.org/illumio/channels/stable.json \
+    https://packages.example.com/illumio/channels/stable.json \
     --output-dir /usr/local/src/illumio-release
 
 sudo set -a
