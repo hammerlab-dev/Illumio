@@ -2,7 +2,7 @@
 
 `scripts/stage_package_release.py` consumes a private package JSON manifest and stages local installer artifacts only after hash verification.
 
-Manifest URLs must use HTTPS, except for the approved LAN-only host `packages.hammer.lan`. If credentials are supplied, the manifest must use HTTPS. Artifact paths are resolved on the same origin as the manifest so endpoint credentials are not sent to a different host.
+Manifest URLs must use HTTPS by default. For isolated internal QA, an operator can explicitly allow a local HTTP manifest host with `PACKAGE_ALLOW_HTTP_HOSTS=packages.example.internal`; credentials are still refused over HTTP. Artifact paths are resolved on the same origin as the manifest so endpoint credentials are not sent to a different host.
 
 Required top-level fields:
 
@@ -12,7 +12,7 @@ Required top-level fields:
   "channel": "stable",
   "version": "24.5.0",
   "status": "ready",
-  "base_url": "https://packages.hammerlabs.org/illumio/releases/24.5.0/",
+  "base_url": "https://packages.example.com/illumio/releases/24.5.0/",
   "artifacts": []
 }
 ```

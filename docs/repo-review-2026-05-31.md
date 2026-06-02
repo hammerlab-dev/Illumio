@@ -4,10 +4,10 @@
 
 Reviewed the Illumio PCE single-node install helper and tested it in a disposable Proxmox LXC:
 
-- Host: `fwd-proxmox`
-- Test CT: `149` / `illumio-test`
+- Host: internal Proxmox node
+- Test CT: disposable LXC
 - OS: Rocky Linux 9.4
-- IP: `10.117.0.149/24`
+- IP: private lab address
 
 No client RPMs, real signing keys, real certificates, or secrets were used. The LXC used dummy staged files and a one-day self-signed certificate only to exercise installer control flow.
 
@@ -79,9 +79,9 @@ Do not deploy the Illumio PCE installer to Proxmox LXC by default. Use an EL9/RH
 
 After the LXC test, the helper was tested in a disposable Rocky Linux 9.8 Proxmox VM:
 
-- Host: `fwd-proxmox`
-- Test VM: `150` / `illumio-vm-test`
-- IP: `10.117.0.150/24`
+- Host: internal Proxmox node
+- Test VM: disposable VM
+- IP: private lab address
 
 The VM `--dry-run` passed without a container warning. A real `--yes` run with a valid Rocky RPM GPG key and a dummy PCE RPM got through prerequisite package install, targeted sysctl application, and `nf_conntrack` module handling, then failed at the dummy RPM artifact:
 

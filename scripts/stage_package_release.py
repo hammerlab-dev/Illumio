@@ -27,7 +27,6 @@ ENV_BY_ROLE = {
     "ca_cert": "CA_CERT",
 }
 RPM_ROLES = {"pce_rpm", "ui_rpm"}
-LOCAL_HTTP_HOSTS = {"packages.hammer.lan"}
 
 
 def fatal(message: str) -> None:
@@ -55,13 +54,18 @@ def fetch_bytes(url: str, auth_header: str | None) -> bytes:
         return response.read()
 
 
+def allowed_http_hosts() -> set[str]:
+    raw_hosts = os.environ.get("PACKAGE_ALLOW_HTTP_HOSTS", "")
+    return {host.strip().lower() for host in raw_hosts.split(",") if host.strip()}
+
+
 def parse_manifest_url(url: str):
     parsed = urlparse(url)
     if parsed.scheme == "https":
         return parsed
-    if parsed.scheme == "http" and parsed.hostname in LOCAL_HTTP_HOSTS:
+    if parsed.scheme == "http" and parsed.hostname and parsed.hostname.lower() in allowed_http_hosts():
         return parsed
-    fatal("Manifest URL must use HTTPS, except approved local LAN package hosts")
+    fatal("Manifest URL must use HTTPS, or PACKAGE_ALLOW_HTTP_HOSTS must explicitly allow the local HTTP host")
 
 
 def require_same_origin(manifest_url: str, artifact_url_value: str) -> str:
