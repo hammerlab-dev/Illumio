@@ -2,7 +2,7 @@
 
 ## Repository identity
 
-- Remote: `https://github.com/jweidenh/Illumio.git`
+- Remote: `https://github.com/hammerlab-dev/Illumio.git`
 - Branch reviewed: `main`
 - Starting commit: `69107ccd567a3d289a4e51d60fa42dfdf53d4e39`
 - Purpose observed: one-time Illumio PCE single-node client install helper, not a standing service.
