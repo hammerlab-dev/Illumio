@@ -61,6 +61,8 @@ Optional bootstrap and verification values:
 - `FULL_NAME`
 - `ORG_NAME`
 - `ADMIN_PASSWORD_FILE`, preferred for non-interactive installs. Do not commit this file.
+- `ADMIN_BOOTSTRAP_TIMEOUT_SECONDS`, default `300`, bounds initial admin creation and fails if the command fails or the prompts do not complete.
+- `PCE_STARTUP_TIMEOUT_SECONDS`, default `900`, bounds each service-readiness wait at runlevels 1 and 5.
 - `CHECKSUM_MANIFEST`, an optional `sha256sum`-compatible manifest for staged RPM, signing, and certificate files.
 - `ALLOW_CONTAINER_INSTALL`, an advanced override for container/LXC hosts. Leave it unset unless Illumio has explicitly approved the platform.
 
@@ -71,6 +73,15 @@ Do not commit client RPMs, private keys, certificates, password files, logs, loc
 Run the installer on an EL9/RHEL-like VM or bare-metal host with host-level kernel, module, sysctl, systemd, RPM, and dnf control.
 
 Linux containers and Proxmox LXCs are not a safe default target for this helper. The script allows `--dry-run` in a container so operators can validate inputs, but real installs fail early unless `ALLOW_CONTAINER_INSTALL=1` is set. Use that override only with vendor approval, because PCE setup changes kernel/module/sysctl state that containers commonly cannot own.
+
+The host must provide `curl` and GNU `timeout`. Startup waits use Illumio's
+`status -sv --wait` readiness check instead of a fixed delay. A failed or timed-out
+check stops the install before the next step. Inspect the PCE before resuming;
+this one-time installer is not safe to rerun over an initialized deployment.
+
+The final login check verifies the certificate hostname and trust chain using
+`CA_CERT`, and fails the install if HTTPS or the HTTP response fails. Ensure the
+certificate covers `PCE_FQDN` and its CA chain is staged before installation.
 
 ## Optional checksum verification
 
@@ -152,6 +163,10 @@ Maintainers should run the full repo check before pushing:
 ```bash
 scripts/check_repo.sh
 ```
+
+The behavior checks require `expect`, GNU `timeout`, `curl`, and `openssl` on the
+local check host. They test startup timeouts, admin bootstrap failures, password
+output suppression, and HTTPS verification without installing Illumio.
 
 ## Before a client install
 

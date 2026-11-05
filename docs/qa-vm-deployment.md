@@ -132,7 +132,7 @@ EMAIL_ADDR=ADMIN_EMAIL_ADDRESS \
 sudo -u ilo-pce illumio-pce-ctl cluster-status
 sudo -u ilo-pce illumio-pce-ctl get-runlevel
 getent hosts PCE_FQDN
-curl -kI https://PCE_FQDN:8443/login
+curl --cacert /usr/local/src/illumio-release/qa-ca.crt -fI https://PCE_FQDN:8443/login
 ```
 
 Expected results:
@@ -142,17 +142,9 @@ Expected results:
 - `PCE_FQDN` resolves to `LOAD_BALANCER_IP`
 - login URL returns `HTTP 200` or a documented expected redirect
 
-Browser validation:
-
-```bash
-npx --yes playwright screenshot \
-  --browser=chromium \
-  --ignore-https-errors \
-  https://PCE_FQDN:8443/login \
-  /tmp/illumio-qa-login.png
-```
-
-The browser should show the Illumio login page. Testing only the direct IP URL
+For browser validation, trust the QA CA through the approved client trust path,
+then open the configured HTTPS URL and confirm the Illumio login page appears
+without a certificate warning. Testing only the direct IP URL
 is not enough because the application may redirect users to the configured PCE
 FQDN.
 

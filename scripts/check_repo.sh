@@ -8,6 +8,7 @@ bash -n install_illumio.sh
 bash -n scripts/validate_manifest.sh
 python3 -m py_compile scripts/stage_package_release.py
 python3 tests/static_checks.py
+python3 tests/install_behavior.py
 ./install_illumio.sh --help >/dev/null
 git diff --check
 

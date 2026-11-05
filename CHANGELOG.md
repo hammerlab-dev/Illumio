@@ -4,6 +4,9 @@ All notable client-install and maintenance changes are tracked here.
 
 ## Unreleased
 
+- Fail initial admin creation on command errors, missing prompts, or a configurable timeout while keeping password output suppressed.
+- Replace fixed startup delays with bounded PCE service-readiness checks.
+- Require the final login smoke check to pass certificate hostname/CA and HTTP validation.
 - Add a real-install preflight guard for container/LXC hosts and document the VM/bare-metal requirement.
 - Apply only the Illumio sysctl file instead of replaying every host sysctl configuration file.
 - Validate staged RPM files before making host changes.

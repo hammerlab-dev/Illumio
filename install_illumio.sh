@@ -40,6 +40,8 @@ Common variables:
   FULL_NAME                Optional; prompted if empty
   ORG_NAME                 Optional; prompted if empty
   ADMIN_PASSWORD_FILE      Optional path to a root-readable file containing the initial password
+  ADMIN_BOOTSTRAP_TIMEOUT_SECONDS  Default: 300; maximum time to create the initial admin
+  PCE_STARTUP_TIMEOUT_SECONDS      Default: 900; maximum wait for each PCE runlevel transition
   CHECKSUM_MANIFEST        Optional sha256sum-compatible manifest for staged package/signing files
   ALLOW_CONTAINER_INSTALL  Set to 1 only with vendor approval to bypass the container/LXC guard
 EOF
@@ -156,15 +158,32 @@ check_fqdn_resolution() {
 check_login_url() {
   local url="https://${PCE_FQDN}:8443/login"
 
-  if ! command -v curl >/dev/null 2>&1; then
-    warn "curl is not available; skipping login URL smoke check for ${url}."
-    return 0
-  fi
-
-  if curl -kfsSI --connect-timeout 10 "$url" >/dev/null; then
-    log "Login URL responded: ${url}"
+  if curl --fail --silent --show-error --head --cacert "$CA_CERT" \
+      --connect-timeout 10 --max-time 30 "$url" >/dev/null; then
+    log "Login URL responded with verified TLS: ${url}"
   else
-    warn "Login URL did not respond cleanly: ${url}. Check DNS, firewall policy, certificate state, and PCE web services."
+    fatal "Login URL verification failed: ${url}. Check DNS, firewall policy, the certificate hostname/chain, and PCE web services before using this deployment."
+  fi
+}
+
+validate_timeout() {
+  local name=$1
+  local value=$2
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] || fatal "${name} must be a positive integer in seconds"
+}
+
+wait_for_pce() {
+  local runlevel=$1
+  local status
+
+  log "Waiting up to ${PCE_STARTUP_TIMEOUT_SECONDS} seconds for PCE services at runlevel ${runlevel}..."
+  if ((DRY_RUN)); then
+    run timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait
+  elif timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait; then
+    log "PCE services are ready at runlevel ${runlevel}."
+  else
+    status=$?
+    fatal "PCE did not become ready at runlevel ${runlevel} within the startup check (exit ${status}). Inspect PCE status and logs before continuing; do not repeat database initialization."
   fi
 }
 
@@ -249,6 +268,8 @@ ADMIN_EMAIL="${ADMIN_EMAIL:-}"
 FULL_NAME="${FULL_NAME:-}"
 ORG_NAME="${ORG_NAME:-}"
 ADMIN_PASSWORD_FILE="${ADMIN_PASSWORD_FILE:-}"
+ADMIN_BOOTSTRAP_TIMEOUT_SECONDS="${ADMIN_BOOTSTRAP_TIMEOUT_SECONDS:-300}"
+PCE_STARTUP_TIMEOUT_SECONDS="${PCE_STARTUP_TIMEOUT_SECONDS:-900}"
 unset ADMIN_PASSWORD ADMIN_PASSWORD2
 ADMIN_PASSWORD=""
 
@@ -264,6 +285,10 @@ require_command sudo
 require_command update-ca-trust
 require_command modprobe
 require_command sysctl
+require_command curl
+require_command timeout
+validate_timeout ADMIN_BOOTSTRAP_TIMEOUT_SECONDS "$ADMIN_BOOTSTRAP_TIMEOUT_SECONDS"
+validate_timeout PCE_STARTUP_TIMEOUT_SECONDS "$PCE_STARTUP_TIMEOUT_SECONDS"
 validate_not_placeholder PCE_FQDN "$PCE_FQDN"
 validate_not_placeholder SERVICE_DISCOVERY_FQDN "$SERVICE_DISCOVERY_FQDN"
 validate_not_placeholder LOAD_BALANCER_IP "$LOAD_BALANCER_IP"
@@ -390,22 +415,14 @@ run illumio-pce-env setup --list --test
 
 log "Starting PCE at runlevel 1..."
 run sudo -u ilo-pce illumio-pce-ctl start --runlevel 1
-if ((DRY_RUN)); then
-  log "Would wait 120 seconds for PCE startup"
-else
-  sleep 120
-fi
+wait_for_pce 1
 
 log "Initializing PCE database..."
 run sudo -u ilo-pce illumio-pce-db-management setup
 
 log "Setting PCE runlevel to 5..."
 run sudo -u ilo-pce illumio-pce-ctl set-runlevel 5
-if ((DRY_RUN)); then
-  log "Would wait 120 seconds for PCE runlevel transition"
-else
-  sleep 120
-fi
+wait_for_pce 5
 
 log "Checking cluster status..."
 run sudo -u ilo-pce illumio-pce-ctl cluster-status
@@ -459,20 +476,44 @@ fi
 [[ -s "$ADMIN_PASSWORD_PATH" ]] || fatal "Admin password file must not be empty"
 
 log "Creating initial PCE user account..."
-export ADMIN_EMAIL FULL_NAME ORG_NAME ADMIN_PASSWORD_PATH
-/usr/bin/expect <<'EOF'
-set timeout -1
+export ADMIN_EMAIL FULL_NAME ORG_NAME ADMIN_PASSWORD_PATH ADMIN_BOOTSTRAP_TIMEOUT_SECONDS
+timeout --kill-after=10s "${ADMIN_BOOTSTRAP_TIMEOUT_SECONDS}s" /usr/bin/expect <<'EOF'
+set timeout $env(ADMIN_BOOTSTRAP_TIMEOUT_SECONDS)
+proc bootstrap_failure {message code} {
+    puts stderr $message
+    catch {close}
+    exit $code
+}
 set password_file [open $env(ADMIN_PASSWORD_PATH) r]
 set admin_password [read $password_file]
 close $password_file
 set admin_password [string trimright $admin_password "\r\n"]
-spawn sudo -u ilo-pce illumio-pce-db-management create-domain --user-name $env(ADMIN_EMAIL) --full-name $env(FULL_NAME) --org-name $env(ORG_NAME)
-expect "Enter Password:"
 log_user 0
+spawn sudo -u ilo-pce illumio-pce-db-management create-domain --user-name $env(ADMIN_EMAIL) --full-name $env(FULL_NAME) --org-name $env(ORG_NAME)
+expect {
+    "Enter Password:" {}
+    timeout { bootstrap_failure "Initial admin creation timed out before the password prompt." 124 }
+    eof { bootstrap_failure "Initial admin creation exited before the password prompt." 1 }
+}
 send -- "$admin_password\r"
-expect "Re-enter Password:"
+expect {
+    "Re-enter Password:" {}
+    timeout { bootstrap_failure "Initial admin creation timed out before password confirmation." 124 }
+    eof { bootstrap_failure "Initial admin creation exited before password confirmation." 1 }
+}
 send -- "$admin_password\r"
-expect eof
+expect {
+    eof {}
+    timeout { bootstrap_failure "Initial admin creation timed out after password confirmation." 124 }
+}
+set child_status [wait]
+if {[lindex $child_status 2] != 0 || [llength $child_status] > 4} {
+    bootstrap_failure "Initial admin creation terminated unexpectedly." 1
+}
+set exit_code [lindex $child_status 3]
+if {$exit_code != 0} {
+    bootstrap_failure "Initial admin creation failed (exit $exit_code)." $exit_code
+}
 log_user 1
 EOF
 unset ADMIN_PASSWORD_PATH
