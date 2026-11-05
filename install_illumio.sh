@@ -187,6 +187,33 @@ wait_for_pce() {
   fi
 }
 
+configure_snc_host_limits() {
+  run mkdir -p /etc/security/limits.d /etc/sysctl.d
+  # Direct sudo/su sessions do not inherit a systemd service drop-in.
+  write_file /etc/security/limits.d/99-illumio-pce.conf 0644 root:root <<'EOF'
+ilo-pce soft core 0
+ilo-pce hard core 0
+ilo-pce soft nofile 65535
+ilo-pce hard nofile 65535
+ilo-pce soft nproc 65535
+ilo-pce hard nproc 65535
+EOF
+  write_file /etc/sysctl.d/99-illumio.conf 0644 root:root <<'EOF'
+fs.file-max = 2000000
+net.core.somaxconn = 16384
+vm.overcommit_memory = 1
+EOF
+  run sysctl -p /etc/sysctl.d/99-illumio.conf
+}
+
+check_pce_user_limits() {
+  run sudo -u ilo-pce bash -c '
+    [[ $(ulimit -Sc) == 0 && $(ulimit -Hc) == 0 ]] &&
+    [[ $(ulimit -Sn) -ge 65535 && $(ulimit -Hn) -ge 65535 ]] &&
+    [[ $(ulimit -Su) -ge 65535 && $(ulimit -Hu) -ge 65535 ]]
+  '
+}
+
 verify_checksum_manifest() {
   local manifest=$1
   local manifest_dir manifest_file
@@ -344,13 +371,7 @@ LimitNPROC=65535
 EOF
 
 log "Configuring system limits and kernel parameters..."
-run mkdir -p /etc/sysctl.d
-write_file /etc/sysctl.d/99-illumio.conf 0644 root:root <<'EOF'
-fs.file-max = 2000000
-net.core.somaxconn = 16384
-EOF
-
-run sysctl -p /etc/sysctl.d/99-illumio.conf
+configure_snc_host_limits
 run modprobe nf_conntrack
 
 if ((DRY_RUN)); then
@@ -377,6 +398,9 @@ if [[ -f "$ILLUMIO_UI_RPM" ]]; then
 else
   warn "Illumio UI RPM not found at ${ILLUMIO_UI_RPM}; skipping optional UI package."
 fi
+
+log "Verifying limits for direct PCE user sessions..."
+check_pce_user_limits
 
 log "Setting up certificates..."
 run mkdir -p /var/lib/illumio-pce/cert

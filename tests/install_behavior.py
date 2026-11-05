@@ -57,6 +57,19 @@ class InstallerBehavior(unittest.TestCase):
                 result = self.shell('validate_timeout PCE_STARTUP_TIMEOUT_SECONDS "$VALUE"', VALUE=value)
                 self.assertNotEqual(result.returncode, 0)
 
+    def test_snc_configuration_covers_direct_sessions_and_database_memory(self):
+        result = self.shell('''run() { :; }
+write_file() { printf 'FILE %s\\n' "$1"; cat; }
+configure_snc_host_limits
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('FILE /etc/security/limits.d/99-illumio-pce.conf', result.stdout)
+        for kind in ('soft', 'hard'):
+            for resource, value in (('core', 0), ('nofile', 65535), ('nproc', 65535)):
+                self.assertIn(f'ilo-pce {kind} {resource} {value}\n', result.stdout)
+        for setting in ('vm.overcommit_memory = 1', 'fs.file-max = 2000000', 'net.core.somaxconn = 16384'):
+            self.assertIn(setting + '\n', result.stdout)
+
     def bootstrap(self, mode):
         self.command("sudo", """#!/usr/bin/env python3
 import os, sys, time

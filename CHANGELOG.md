@@ -4,6 +4,7 @@ All notable client-install and maintenance changes are tracked here.
 
 ## Unreleased
 
+- Apply the SNC database memory setting and PAM process/file limits for direct PCE user sessions; verify limits before startup.
 - Fail initial admin creation on command errors, missing prompts, or a configurable timeout while keeping password output suppressed.
 - Replace fixed startup delays with bounded PCE service-readiness checks.
 - Require the final login smoke check to pass certificate hostname/CA and HTTP validation.

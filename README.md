@@ -79,6 +79,11 @@ The host must provide `curl` and GNU `timeout`. Startup waits use Illumio's
 check stops the install before the next step. Inspect the PCE before resuming;
 this one-time installer is not safe to rerun over an initialized deployment.
 
+Single-node database operation requires `vm.overcommit_memory=1`. The helper
+applies it with the other PCE kernel settings and configures PAM limits for
+`ilo-pce`, so direct `sudo`/`su` starts receive the same process and file limits
+as systemd starts. It verifies the effective user limits before starting PCE.
+
 The final login check verifies the certificate hostname and trust chain using
 `CA_CERT`, and fails the install if HTTPS or the HTTP response fails. Ensure the
 certificate covers `PCE_FQDN` and its CA chain is staged before installation.
