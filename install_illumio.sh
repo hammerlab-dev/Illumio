@@ -174,17 +174,34 @@ validate_timeout() {
 
 wait_for_pce() {
   local runlevel=$1
-  local status
+  local status expected_status current_runlevel status_output
 
   log "Waiting up to ${PCE_STARTUP_TIMEOUT_SECONDS} seconds for PCE services at runlevel ${runlevel}..."
   if ((DRY_RUN)); then
-    run timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait
-  elif timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait; then
-    log "PCE services are ready at runlevel ${runlevel}."
+    run timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait --stdexit
+    run timeout --kill-after=10s 30s sudo -u ilo-pce illumio-pce-ctl get-runlevel
+    return 0
+  fi
+  # Illumio's default status exit codes are not conventional shell success codes.
+  # --stdexit returns 1 for healthy runlevel 1, and 0 for healthy runlevel 5.
+  expected_status=0
+  [[ "$runlevel" == 1 ]] && expected_status=1
+  if status_output=$(timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait --stdexit); then
+    status=0
   else
     status=$?
+  fi
+  printf '%s\n' "$status_output"
+  if [[ "$status" != "$expected_status" ]]; then
     fatal "PCE did not become ready at runlevel ${runlevel} within the startup check (exit ${status}). Inspect PCE status and logs before continuing; do not repeat database initialization."
   fi
+  grep -Eq "^Illumio Runtime System[[:space:]]+RUNNING \\[${runlevel}\\]([[:space:]]|$)" <<<"$status_output" ||
+    fatal "PCE readiness did not report a running system at the expected runlevel."
+  current_runlevel=$(timeout --kill-after=10s 30s sudo -u ilo-pce illumio-pce-ctl get-runlevel) ||
+    fatal "Cannot verify the PCE runlevel after its readiness check."
+  grep -Fxq "Current PCE runlevel is ${runlevel}" <<<"$current_runlevel" ||
+    fatal "PCE readiness succeeded for an unexpected runlevel; refusing to continue."
+  log "PCE services are ready at runlevel ${runlevel}."
 }
 
 configure_snc_host_limits() {
@@ -449,7 +466,7 @@ run sudo -u ilo-pce illumio-pce-ctl set-runlevel 5
 wait_for_pce 5
 
 log "Checking cluster status..."
-run sudo -u ilo-pce illumio-pce-ctl cluster-status
+run sudo -u ilo-pce illumio-pce-ctl cluster-status --stdexit
 
 if ((DRY_RUN)); then
   log "Dry run complete before initial admin creation."

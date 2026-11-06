@@ -75,7 +75,9 @@ Run the installer on an EL9/RHEL-like VM or bare-metal host with host-level kern
 Linux containers and Proxmox LXCs are not a safe default target for this helper. The script allows `--dry-run` in a container so operators can validate inputs, but real installs fail early unless `ALLOW_CONTAINER_INSTALL=1` is set. Use that override only with vendor approval, because PCE setup changes kernel/module/sysctl state that containers commonly cannot own.
 
 The host must provide `curl` and GNU `timeout`. Startup waits use Illumio's
-`status -sv --wait` readiness check instead of a fixed delay. A failed or timed-out
+`status -sv --wait --stdexit` readiness check instead of a fixed delay. Its
+documented success code is `1` at runlevel 1 and `0` at runlevel 5; the helper
+also verifies the reported runlevel before continuing. A failed or timed-out
 check stops the install before the next step. Inspect the PCE before resuming;
 this one-time installer is not safe to rerun over an initialized deployment.
 

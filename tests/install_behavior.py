@@ -39,10 +39,33 @@ class InstallerBehavior(unittest.TestCase):
         )
 
     def test_service_readiness_returns_without_fixed_sleep(self):
-        self.command("sudo", "#!/bin/sh\nexit 0\n")
+        self.command("sudo", '#!/bin/sh\ncase "$4" in status) echo "Illumio Runtime System RUNNING [1]"; exit 1;; get-runlevel) echo "Current PCE runlevel is 1";; esac\n')
         result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=1; wait_for_pce 1; echo ready")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("ready", result.stdout)
+
+    def test_full_runlevel_requires_standard_success_and_matching_level(self):
+        self.command("sudo", '#!/bin/sh\ncase "$4" in status) echo "Illumio Runtime System RUNNING [5]"; exit 0;; get-runlevel) echo "Current PCE runlevel is 5";; esac\n')
+        result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=1; wait_for_pce 5")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_healthy_status_at_wrong_runlevel_is_rejected(self):
+        self.command("sudo", '#!/bin/sh\ncase "$4" in status) echo "Illumio Runtime System RUNNING [1]"; exit 1;; get-runlevel) echo "Current PCE runlevel is 5";; esac\n')
+        result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=1; wait_for_pce 1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unexpected runlevel", result.stderr)
+
+    def test_exit_one_without_running_summary_is_rejected(self):
+        self.command("sudo", '#!/bin/sh\ncase "$4" in status) exit 1;; get-runlevel) echo "Current PCE runlevel is 1";; esac\n')
+        result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=1; wait_for_pce 1")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_partial_or_stopped_status_is_rejected(self):
+        for status in (2, 3, 127):
+            with self.subTest(status=status):
+                self.command("sudo", f'#!/bin/sh\nexit {status}\n')
+                result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=1; wait_for_pce 1")
+                self.assertNotEqual(result.returncode, 0)
 
     def test_service_timeout_stops_before_next_step(self):
         self.command("sudo", "#!/bin/sh\nexec sleep 30\n")
