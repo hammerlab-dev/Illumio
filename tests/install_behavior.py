@@ -45,8 +45,24 @@ class InstallerBehavior(unittest.TestCase):
         self.assertIn("ready", result.stdout)
 
     def test_full_runlevel_requires_standard_success_and_matching_level(self):
-        self.command("sudo", '#!/bin/sh\ncase "$4" in status) echo "Illumio Runtime System RUNNING [5]"; exit 0;; get-runlevel) echo "Current PCE runlevel is 5";; esac\n')
+        self.command("sudo", '#!/bin/sh\ncase "$4" in status) echo "Illumio Runtime System RUNNING 3.20s"; exit 0;; get-runlevel) echo "Current PCE runlevel is 5";; esac\n')
         result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=1; wait_for_pce 5")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_configured_wait_reaches_vendor_command(self):
+        self.command("sudo", '#!/bin/sh\ncase "$4" in status) [ "$6" = --wait ] && [ "$7" = 7 ] && [ "$8" = --stdexit ] || exit 2; echo "Illumio Runtime System RUNNING 3.20s";; get-runlevel) echo "Current PCE runlevel is 5";; esac\n')
+        result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=7; wait_for_pce 5")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_full_runlevel_rejects_success_without_running_summary(self):
+        self.command("sudo", '#!/bin/sh\ncase "$4" in status) echo "Illumio Runtime System PARTIAL 3.20s";; get-runlevel) echo "Current PCE runlevel is 5";; esac\n')
+        result = self.shell("PCE_STARTUP_TIMEOUT_SECONDS=1; wait_for_pce 5")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_cluster_check_uses_standard_exit_semantics(self):
+        self.command("sudo", '#!/bin/sh\n[ "$4" = cluster-status ] && [ "$5" = --stdexit ] && exit 0\nexit 1\n')
+        command = SCRIPT.split('log "Checking cluster status..."', 1)[1].split('if ((DRY_RUN))', 1)[0]
+        result = self.shell(command)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_healthy_status_at_wrong_runlevel_is_rejected(self):

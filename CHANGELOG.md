@@ -4,6 +4,8 @@ All notable client-install and maintenance changes are tracked here.
 
 ## Unreleased
 
+- Pass the configured service startup wait to Illumio as well as the external timeout, avoiding its shorter default wait.
+- Verify native full-runlevel status output and use standard exit semantics for the final cluster check.
 - Interpret Illumio's explicit standard status codes for each expected runlevel and verify the reported runlevel before continuing.
 - Apply the SNC database memory setting and PAM process/file limits for direct PCE user sessions; verify limits before startup.
 - Fail initial admin creation on command errors, missing prompts, or a configurable timeout while keeping password output suppressed.

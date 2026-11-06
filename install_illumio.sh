@@ -178,7 +178,7 @@ wait_for_pce() {
 
   log "Waiting up to ${PCE_STARTUP_TIMEOUT_SECONDS} seconds for PCE services at runlevel ${runlevel}..."
   if ((DRY_RUN)); then
-    run timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait --stdexit
+    run timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait "$PCE_STARTUP_TIMEOUT_SECONDS" --stdexit
     run timeout --kill-after=10s 30s sudo -u ilo-pce illumio-pce-ctl get-runlevel
     return 0
   fi
@@ -186,7 +186,7 @@ wait_for_pce() {
   # --stdexit returns 1 for healthy runlevel 1, and 0 for healthy runlevel 5.
   expected_status=0
   [[ "$runlevel" == 1 ]] && expected_status=1
-  if status_output=$(timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait --stdexit); then
+  if status_output=$(timeout --kill-after=10s "${PCE_STARTUP_TIMEOUT_SECONDS}s" sudo -u ilo-pce illumio-pce-ctl status -sv --wait "$PCE_STARTUP_TIMEOUT_SECONDS" --stdexit); then
     status=0
   else
     status=$?
@@ -195,7 +195,8 @@ wait_for_pce() {
   if [[ "$status" != "$expected_status" ]]; then
     fatal "PCE did not become ready at runlevel ${runlevel} within the startup check (exit ${status}). Inspect PCE status and logs before continuing; do not repeat database initialization."
   fi
-  grep -Eq "^Illumio Runtime System[[:space:]]+RUNNING \\[${runlevel}\\]([[:space:]]|$)" <<<"$status_output" ||
+  # Summary suffixes vary; the separate get-runlevel check supplies the exact level.
+  grep -Eq '^Illumio Runtime System[[:space:]]+RUNNING([[:space:]]|$)' <<<"$status_output" ||
     fatal "PCE readiness did not report a running system at the expected runlevel."
   current_runlevel=$(timeout --kill-after=10s 30s sudo -u ilo-pce illumio-pce-ctl get-runlevel) ||
     fatal "Cannot verify the PCE runlevel after its readiness check."
