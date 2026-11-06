@@ -469,6 +469,10 @@ wait_for_pce 5
 log "Checking cluster status..."
 run sudo -u ilo-pce illumio-pce-ctl cluster-status --stdexit
 
+log "Enabling PCE startup at boot..."
+run systemctl daemon-reload
+run systemctl enable illumio-pce
+
 if ((DRY_RUN)); then
   log "Dry run complete before initial admin creation."
   exit 0

@@ -4,6 +4,7 @@ All notable client-install and maintenance changes are tracked here.
 
 ## Unreleased
 
+- Explicitly reload systemd and enable PCE startup at boot after the full cluster health check.
 - Pass the configured service startup wait to Illumio as well as the external timeout, avoiding its shorter default wait.
 - Verify native full-runlevel status output and use standard exit semantics for the final cluster check.
 - Interpret Illumio's explicit standard status codes for each expected runlevel and verify the reported runlevel before continuing.

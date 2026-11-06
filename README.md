@@ -87,6 +87,10 @@ applies it with the other PCE kernel settings and configures PAM limits for
 `ilo-pce`, so direct `sudo`/`su` starts receive the same process and file limits
 as systemd starts. It verifies the effective user limits before starting PCE.
 
+After full runlevel-5 cluster health succeeds, the installer reloads systemd
+and enables `illumio-pce` for startup on subsequent boots. These steps also
+appear in dry-run output and do not start or restart the running PCE.
+
 The final login check verifies the certificate hostname and trust chain using
 `CA_CERT`, and fails the install if HTTPS or the HTTP response fails. Ensure the
 certificate covers `PCE_FQDN` and its CA chain is staged before installation.

@@ -61,9 +61,31 @@ class InstallerBehavior(unittest.TestCase):
 
     def test_cluster_check_uses_standard_exit_semantics(self):
         self.command("sudo", '#!/bin/sh\n[ "$4" = cluster-status ] && [ "$5" = --stdexit ] && exit 0\nexit 1\n')
+        self.command("systemctl", '#!/bin/sh\nprintf "%s\\n" "$*" >> "$BOOT_CALLS"\ncase "$*" in daemon-reload|"enable illumio-pce") exit 0;; *) exit 1;; esac\n')
         command = SCRIPT.split('log "Checking cluster status..."', 1)[1].split('if ((DRY_RUN))', 1)[0]
-        result = self.shell(command)
+        calls = self.directory / "boot-calls"
+        result = self.shell(command, BOOT_CALLS=str(calls))
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls.read_text().splitlines(), ["daemon-reload", "enable illumio-pce"])
+
+    def test_failed_cluster_check_does_not_enable_boot(self):
+        self.command("sudo", '#!/bin/sh\nexit 2\n')
+        self.command("systemctl", '#!/bin/sh\ntouch "$BOOT_CALLS"\n')
+        command = SCRIPT.split('log "Checking cluster status..."', 1)[1].split('if ((DRY_RUN))', 1)[0]
+        calls = self.directory / "boot-calls"
+        result = self.shell(command, BOOT_CALLS=str(calls))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(calls.exists())
+
+    def test_boot_enablement_is_planned_without_execution_in_dry_run(self):
+        self.command("systemctl", '#!/bin/sh\ntouch "$BOOT_CALLS"\nexit 1\n')
+        command = SCRIPT.split('log "Checking cluster status..."', 1)[1].split('if ((DRY_RUN))', 1)[0]
+        calls = self.directory / "boot-calls"
+        result = self.shell('DRY_RUN=1\n' + command, BOOT_CALLS=str(calls))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(calls.exists())
+        self.assertIn("systemctl daemon-reload", result.stdout)
+        self.assertIn("systemctl enable illumio-pce", result.stdout)
 
     def test_healthy_status_at_wrong_runlevel_is_rejected(self):
         self.command("sudo", '#!/bin/sh\ncase "$4" in status) echo "Illumio Runtime System RUNNING [1]"; exit 1;; get-runlevel) echo "Current PCE runlevel is 5";; esac\n')
